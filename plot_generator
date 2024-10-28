@@ -1,0 +1,74 @@
+# Funkcja generująca wykresy na podstawie wyników eksperymentów
+def generate_plots(results):
+    # Konwertujemy listę wyników na obiekt DataFrame z określonymi kolumnami
+    # 'results' powinno zawierać listę rekordów, gdzie każdy rekord to wyniki dla jednej kombinacji parametrów
+    df = pd.DataFrame(results,
+                      columns=["Model", "Library", "Format", "Dataset", "Training Time (s)", "Memory Usage (MB)",
+                               "Validation Accuracy"])
+
+    # Sekcja tworzenia wykresów:
+    # 1. Wykres czasu trenowania dla różnych formatów macierzy na CPU
+    plt.figure(figsize=(10, 6))  # Ustawienie rozmiaru wykresu na 10x6 cali
+    # Iterujemy przez unikalne wartości 'Library' (np. 'PyG' i 'DGL') w celu wygenerowania osobnych linii dla każdej biblioteki
+    for lib in df['Library'].unique():
+        # Tworzymy podzbiór danych tylko dla aktualnie iterowanej biblioteki (lib)
+        subset = df[df['Library'] == lib]
+        # Generujemy wykres liniowy dla czasu trenowania w różnych formatach, marker 'o' oznacza kółka na punktach danych
+        plt.plot(subset['Format'], subset['Training Time (s)'], marker='o', label=f"{lib} (CPU)")
+    # Ustawiamy tytuł wykresu
+    plt.title("Training Time for Different Formats on CPU")
+    # Oznaczenie osi x (Format macierzy rzadkiej) i osi y (Czas trenowania w sekundach)
+    plt.xlabel("Sparse Matrix Format")
+    plt.ylabel("Training Time (s)")
+    # Dodanie legendy opisującej linie dla różnych bibliotek
+    plt.legend()
+    # Dodanie siatki do wykresu dla lepszej czytelności
+    plt.grid(True)
+    # Zapisujemy wykres jako plik PNG
+    plt.savefig('training_time_cpu.png')
+    # Wyświetlamy wykres na ekranie
+    plt.show()
+
+    # 2. Wykres zużycia pamięci dla różnych formatów macierzy na CPU
+    plt.figure(figsize=(10, 6))  # Ustawienie rozmiaru wykresu na 10x6 cali
+    # Iterujemy przez unikalne wartości 'Library' w celu wygenerowania osobnych linii dla każdej biblioteki
+    for lib in df['Library'].unique():
+        # Tworzymy podzbiór danych tylko dla aktualnie iterowanej biblioteki (lib)
+        subset = df[df['Library'] == lib]
+        # Generujemy wykres liniowy dla zużycia pamięci w różnych formatach, marker 'o' oznacza kółka na punktach danych
+        plt.plot(subset['Format'], subset['Memory Usage (MB)'], marker='o', label=f"{lib} (CPU)")
+    # Ustawiamy tytuł wykresu
+    plt.title("Memory Usage for Different Formats on CPU")
+    # Oznaczenie osi x (Format macierzy rzadkiej) i osi y (Zużycie pamięci w MB)
+    plt.xlabel("Sparse Matrix Format")
+    plt.ylabel("Memory Usage (MB)")
+    # Dodanie legendy opisującej linie dla różnych bibliotek
+    plt.legend()
+    # Dodanie siatki do wykresu dla lepszej czytelności
+    plt.grid(True)
+    # Zapisujemy wykres jako plik PNG
+    plt.savefig('memory_usage_cpu.png')
+    # Wyświetlamy wykres na ekranie
+    plt.show()
+
+    # Opcjonalnie: 3. Wykres dokładności walidacyjnej dla różnych formatów macierzy na CPU
+    plt.figure(figsize=(10, 6))  # Ustawienie rozmiaru wykresu na 10x6 cali
+    # Iterujemy przez unikalne wartości 'Library' w celu wygenerowania osobnych linii dla każdej biblioteki
+    for lib in df['Library'].unique():
+        # Tworzymy podzbiór danych tylko dla aktualnie iterowanej biblioteki (lib)
+        subset = df[df['Library'] == lib]
+        # Generujemy wykres liniowy dla dokładności walidacyjnej, marker 'o' oznacza kółka na punktach danych
+        plt.plot(subset['Format'], subset['Validation Accuracy'], marker='o', label=f"{lib} (CPU)")
+    # Ustawiamy tytuł wykresu
+    plt.title("Validation Accuracy for Different Formats on CPU")
+    # Oznaczenie osi x (Format macierzy rzadkiej) i osi y (Dokładność walidacyjna)
+    plt.xlabel("Sparse Matrix Format")
+    plt.ylabel("Validation Accuracy")
+    # Dodanie legendy opisującej linie dla różnych bibliotek
+    plt.legend()
+    # Dodanie siatki do wykresu dla lepszej czytelności
+    plt.grid(True)
+    # Zapisujemy wykres jako plik PNG
+    plt.savefig('validation_accuracy_cpu.png')
+    # Wyświetlamy wykres na ekranie
+    plt.show()
