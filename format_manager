@@ -1,0 +1,44 @@
+# Funkcja do konwersji formatu macierzy sąsiedztwa dla PyTorch Geometric (PyG)
+# Przyjmuje obiekt 'data' z PyG i wybrany format macierzy sąsiedztwa ('COO', 'CSR', 'CSC')
+def convert_pyg_format(data, matrix_format):
+    # Jeśli format macierzy to "COO" (Coordinate List), zwracamy dane bez konwersji,
+    # ponieważ w PyG krawędzie są przechowywane domyślnie w formacie COO jako edge_index.
+    if matrix_format == "COO":
+        return data
+    # Jeśli format to "CSR" (Compressed Sparse Row), wykonujemy konwersję do CSR:
+    elif matrix_format == "CSR":
+        # Tworzymy SparseTensor w formacie CSR z wierszami i kolumnami z edge_index
+        # Przypisujemy wynik do pola adj_t (popularnie wykorzystywanego dla CSR w PyG)
+        data.adj_t = SparseTensor(row=data.edge_index[0], col=data.edge_index[1], value=None).to('cpu')
+        return data
+    # Jeśli format to "CSC" (Compressed Sparse Column), wykonujemy konwersję do CSC:
+    elif matrix_format == "CSC":
+        # Najpierw tworzymy macierz w formacie CSR, a następnie dokonujemy jej transpozycji do CSC
+        data.adj_t = SparseTensor(row=data.edge_index[0], col=data.edge_index[1], value=None).to('cpu')
+        data.adj_t = data.adj_t.t()  # Transpozycja (t()) SparseTensor dla formatu CSC
+        return data
+    # Jeśli podano format, który nie jest obsługiwany, rzucamy błąd z opisem formatu
+    else:
+        raise ValueError("Nieznany format macierzy dla PyG: {}".format(matrix_format))
+
+# Funkcja do konwersji formatu macierzy sąsiedztwa dla Deep Graph Library (DGL)
+# Przyjmuje obiekt 'graph' z DGL i wybrany format macierzy sąsiedztwa ('COO', 'CSR', 'CSC')
+def convert_dgl_format(graph, matrix_format):
+    # Jeśli format macierzy to "COO", zwracamy graf bez konwersji,
+    # ponieważ DGL domyślnie reprezentuje krawędzie w formacie COO.
+    if matrix_format == "COO":
+        return graph
+    # Jeśli format to "CSR" (Compressed Sparse Row), wykonujemy konwersję do CSR:
+    elif matrix_format == "CSR":
+        # Konwersja grafu do formatu CSR przez uproszczenie grafu (usunięcie wielokrotnych krawędzi),
+        # a następnie przekształcenie go na "block format" DGL, który obsługuje CSR
+        return dgl.to_block(dgl.to_simple(graph))
+    # Jeśli format to "CSC" (Compressed Sparse Column), wykonujemy konwersję alternatywną, bo CSC nie jest obsługiwany natywnie przez DGL:
+    elif matrix_format == "CSC":
+        # DGL nie wspiera natywnie formatu CSC, więc dodajemy pętle własne (self-loop)
+        # aby poprawić strukturę grafu dla analizy GNN
+        graph = dgl.add_self_loop(graph)
+        return graph
+    # Jeśli podano format, który nie jest obsługiwany, rzucamy błąd z opisem formatu
+    else:
+        raise ValueError("Nieznany format macierzy dla DGL: {}".format(matrix_format))
