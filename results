@@ -1,0 +1,107 @@
+# Funkcja `run_experiments` przeprowadza eksperymenty dla różnych modeli, formatów macierzy i bibliotek,
+# zbiera wyniki wydajnościowe oraz zapisuje je do pliku CSV.
+def run_experiments():
+    # Słownik z modelami: przypisuje nazwy modeli (GCN, GraphSAGE, GAT) do ich klas.
+    models = {
+        'GCN': GCN,
+        'GraphSAGE': GraphSAGE,
+        'GAT': GAT
+    }
+    # Lista formatów macierzy rzadkich do przetestowania: COO, CSR, CSC
+    formats = ["COO", "CSR", "CSC"]
+    # Lista bibliotek do przetestowania: PyG (PyTorch Geometric) i DGL (Deep Graph Library)
+    libraries = ["PyG", "DGL"]
+
+    # Lista `results` będzie przechowywać wszystkie wyniki z eksperymentów
+    results = []
+
+    # Sprawdzamy, czy plik `experiment_results.csv` już istnieje
+    file_exists = os.path.isfile('experiment_results.csv')
+
+    # Otwieramy plik `experiment_results.csv` w trybie dodawania (`a`) i ustawiamy parametr `newline=''` dla poprawnego zapisu wierszy
+    with open('experiment_results.csv', mode='a', newline='') as file:
+        writer = csv.writer(file)
+        # Jeśli plik nie istnieje, zapisujemy nagłówki kolumn
+        if not file_exists:
+            writer.writerow(["Model", "Library", "Format", "Dataset", "Training Time (s)", "Memory Usage (MB)", "Validation Accuracy"])
+
+        # Iterujemy przez modele, biblioteki i formaty
+        for model_name, model_class in models.items():
+            for lib in libraries:
+                for fmt in formats:
+                    # Ładowanie danych dla danego modelu, biblioteki i formatu
+                    data, dataset_name, dataset = load_data(lib, fmt)
+                    print(f"Running experiment for {model_name} with {lib} using {fmt} format on {dataset_name}.")
+
+                    # # Opcjonalne obliczenia dodatkowych informacji o zbiorze danych:
+                    # num_nodes = data.num_nodes if hasattr(data, 'num_nodes') else data.ndata['feat'].shape[0]
+                    # num_edges = data.num_edges if hasattr(data, 'num_edges') else data.num_edges()  # W przypadku DGL
+                    # avg_degree = num_edges / num_nodes  # Średni stopień wierzchołka
+                    # sparsity = (1 - (num_edges / (num_nodes * (num_nodes - 1)))) * 100  # Obliczenie rzadkości grafu
+                    #
+                    # Obliczanie rozmiaru w pamięci:
+                    # if lib == "PyG":
+                    #     memory_size_gb = round(data.x.element_size() * data.x.nelement() / (1024 ** 3), 4)
+                    # else:
+                    #     memory_size_gb = round(
+                    #         data.ndata['feat'].element_size() * data.ndata['feat'].nelement() / (1024 ** 3), 4
+                    #     )
+                    #
+                    # # Zapisanie informacji o zbiorze danych
+                    # save_dataset_info(dataset_name, num_nodes, num_edges, memory_size_gb, dataset.num_classes, avg_degree, sparsity)
+
+                    # Tworzymy instancję modelu z odpowiednimi wymiarami wejścia, warstwy ukrytej i wyjścia:
+                    if lib == "PyG":
+                        # Dla PyG: uzyskujemy liczbę cech węzła (num_node_features) oraz liczbę klas (num_classes)
+                        model = model_class(input_dim=data.num_node_features, hidden_dim=16, output_dim=dataset.num_classes)
+                    else:
+                        # Dla DGL: przypisujemy cechy `feat` i etykiety `label` z grafu
+                        feat = data.ndata['feat']
+                        label = data.ndata['label']
+
+                        # Sprawdzamy, czy `feat` i `label` są słownikami (co występuje w grafie heterogenicznym)
+                        if isinstance(feat, dict):
+                            feat = feat['_N']  # Zakładamy, że '_N' reprezentuje główny typ węzła
+                        if isinstance(label, dict):
+                            label = label['_N']
+                        # Tworzymy model na podstawie rozmiarów `feat` i `label`
+                        model = model_class(input_dim=feat.shape[1], hidden_dim=16, output_dim=label.max().item() + 1)
+
+                    # Przeprowadzamy trening modelu, zapisując czas trenowania i zużycie pamięci
+                    train_time, mem_usage = train(model, data)
+                    # Przeprowadzamy ewaluację modelu, obliczając dokładność walidacyjną
+                    accuracy = evaluate_model(model, data)
+
+                    # Zapisujemy wyniki eksperymentu do pliku CSV
+                    writer.writerow([model_name, lib, fmt, dataset_name, train_time, mem_usage, accuracy])
+                    # Dodajemy wyniki do listy `results` dla dalszej analizy
+                    results.append([model_name, lib, fmt, dataset_name, train_time, mem_usage, accuracy])
+
+                    print(f"Finished {model_name} with {lib} using {fmt} format on {dataset_name}.")
+
+    # Zwracamy listę wyników
+    return results
+
+
+# Funkcja `save_dataset_info` zapisuje informacje o zbiorze danych do pliku CSV, jeśli jeszcze ich nie zapisano
+def save_dataset_info(dataset_name, num_nodes, num_edges, memory_size_gb, num_classes, avg_degree, sparsity):
+    # Sprawdzamy, czy plik `dataset_info.csv` już istnieje
+    file_exists = os.path.isfile('dataset_info.csv')
+    # Jeśli plik istnieje, wczytujemy jego zawartość do DataFrame dla sprawdzenia duplikatów
+    df = pd.read_csv('dataset_info.csv') if file_exists else pd.DataFrame()
+
+    # Sprawdzamy, czy plik już zawiera rekord dla danego zbioru danych
+    if not df.empty and dataset_name in df['Dataset'].values:
+        print(f"Rekord dla zbioru {dataset_name} już istnieje. Pomijam zapis.")
+        return
+
+    # Otwieramy plik `dataset_info.csv` w trybie dodawania (`a`) i ustawiamy parametr `newline=''` dla poprawnego zapisu wierszy
+    with open('dataset_info.csv', mode='a', newline='') as file:
+        writer = csv.writer(file)
+        # Jeśli plik nie istnieje, zapisujemy nagłówki kolumn
+        if not file_exists:
+            writer.writerow(
+                ['Dataset', 'Num Nodes', 'Num Edges', 'Memory Size (GB)', 'Num Classes', 'Avg Degree', 'Sparsity'])
+
+        # Zapisujemy informacje o zbiorze danych
+        writer.writerow([dataset_name, num_nodes, num
