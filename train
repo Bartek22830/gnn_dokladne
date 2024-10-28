@@ -1,0 +1,99 @@
+# Funkcja `train` trenuje model GNN na danych i zwraca czas treningu oraz zużycie pamięci
+def train(model, data):
+    # Inicjalizacja optymalizatora Adam dla parametrów modelu, z ustaloną wartością współczynnika uczenia (learning rate)
+    optimizer = optim.Adam(model.parameters(), lr=0.01)
+    # Ustawienie modelu w tryb trenowania
+    model.train()
+
+    # Rozpoczęcie pomiaru czasu
+    start_time = time.time()
+    # Pomiar aktualnego zużycia pamięci przed rozpoczęciem trenowania
+    mem_usage_before = memory_profiler.memory_usage()[0]
+
+    # Pętla treningowa, która wykonuje 200 epok
+    for epoch in range(200):
+        # Zerowanie gradientów przed każdym krokiem, aby uniknąć kumulacji z poprzednich epok
+        optimizer.zero_grad()
+
+        # Forward pass: przeprowadzenie danych przez model, aby uzyskać wyniki (out)
+        out = model(data)
+
+        # Obliczanie straty (loss)
+        # PyTorch Geometric (PyG): jeśli dane zawierają `train_mask` (używany do identyfikacji danych treningowych)
+        if hasattr(data, 'train_mask'):
+            # Obliczamy stratę negatywnego logarytmu prawdopodobieństwa (NLL) na podstawie predykcji dla węzłów oznaczonych w `train_mask`
+            loss = F.nll_loss(out[data.train_mask], data.y[data.train_mask])
+        else:
+            # Deep Graph Library (DGL): zakładamy, że graf jest jednorodny (z jednym typem węzłów)
+            # Pobieramy `train_mask` i `label` (etykiety) z danych DGL
+            train_mask = data.ndata['train_mask']
+            label = data.ndata['label']
+
+            # Jeśli `train_mask` i `label` są słownikami (np. dla grafów heterogenicznych)
+            if isinstance(train_mask, dict):
+                # Zakładamy, że `_N` jest typem głównego węzła w grafie heterogenicznym
+                train_mask = train_mask['_N']
+                label = label['_N']
+
+            # Obliczamy stratę NLL na podstawie predykcji dla węzłów oznaczonych w `train_mask`
+            loss = F.nll_loss(out[train_mask], label[train_mask])
+
+        # Backward pass: wyliczenie gradientów dla wszystkich parametrów
+        loss.backward()
+        # Krok optymalizatora w celu aktualizacji wag modelu na podstawie obliczonych gradientów
+        optimizer.step()
+
+        # Co 25 epok wyświetlamy informację o aktualnej epoce i wartości straty
+        if epoch % 25 == 0:
+            print(f'Epoch {epoch+1}, Loss: {loss:.4f}')
+
+    # Końcowy pomiar czasu
+    end_time = time.time()
+    # Pomiar zużycia pamięci po zakończeniu trenowania
+    mem_usage_after = memory_profiler.memory_usage()[0]
+
+    # Obliczenie całkowitego czasu trenowania i różnicy zużycia pamięci
+    train_time = end_time - start_time
+    mem_usage = mem_usage_after - mem_usage_before
+    # Wyświetlenie całkowitego czasu trenowania i zużycia pamięci
+    print(f"Czas trenowania: {train_time:.2f} s, Zużycie pamięci: {mem_usage:.2f} MB")
+    # Zwracamy czas trenowania i zużycie pamięci
+    return train_time, mem_usage
+
+
+# Funkcja `evaluate_model` oblicza dokładność modelu na zbiorze testowym i zwraca ją
+def evaluate_model(model, data):
+    # Ustawienie modelu w tryb ewaluacji (dezaktywacja dropout, batch normalization itp.)
+    model.eval()
+    # Wyłączenie śledzenia gradientów (oszczędza pamięć i czas, gdy nie wykonujemy backpropagation)
+    with torch.no_grad():
+        # Forward pass: uzyskanie predykcji modelu
+        out = model(data)
+        # PyTorch Geometric (PyG): jeśli dane zawierają `test_mask` (oznaczający węzły testowe)
+        if hasattr(data, 'test_mask'):
+            # Wybieramy klasy z największym prawdopodobieństwem (predykcja) dla każdego węzła
+            pred = out.argmax(dim=1)
+            # Sprawdzamy, czy predykcje dla węzłów testowych są zgodne z ich rzeczywistymi etykietami
+            correct = pred[data.test_mask] == data.y[data.test_mask]
+            # Obliczamy dokładność jako stosunek poprawnych predykcji do liczby węzłów w zbiorze testowym
+            accuracy = int(correct.sum()) / int(data.test_mask.sum())
+        else:
+            # Deep Graph Library (DGL): zakładamy, że graf jest jednorodny (z jednym typem węzłów)
+            # Pobieramy `test_mask` i `label` (etykiety) z danych DGL
+            test_mask = data.ndata['test_mask']
+            label = data.ndata['label']
+
+            # Jeśli `test_mask` i `label` są słownikami (np. dla grafów heterogenicznych)
+            if isinstance(test_mask, dict):
+                # Zakładamy, że `_N` jest typem głównego węzła w grafie heterogenicznym
+                test_mask = test_mask['_N']
+                label = label['_N']
+
+            # Wybieramy klasy z największym prawdopodobieństwem dla każdego węzła
+            pred = out.argmax(dim=1)
+            # Sprawdzamy, czy predykcje dla węzłów testowych są zgodne z ich rzeczywistymi etykietami
+            correct = pred[test_mask] == label[test_mask]
+            # Obliczamy dokładność jako stosunek poprawnych predykcji do liczby węzłów w zbiorze testowym
+            accuracy = int(correct.sum()) / int(test_mask.sum())
+    # Zwracamy obliczoną dokładność
+    return accuracy
