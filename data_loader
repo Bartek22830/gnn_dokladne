@@ -1,0 +1,88 @@
+# Funkcja do ładowania danych w zależności od wybranej biblioteki (PyG lub DGL), formatu macierzy i zbioru danych (tu: PPI)
+def load_data(library, matrix_format):
+    # Nazwa zbioru danych, który będzie używany (tutaj: zbiór danych PPI)
+    dataset_name = "PPI"
+
+    # Sprawdzenie, czy wybrana biblioteka to PyG (PyTorch Geometric)
+    if library == "PyG":
+        # Ładowanie danych PPI do zmiennej dataset, zapisanie ich w lokalnym katalogu tymczasowym '/tmp/{dataset_name}'
+        dataset = PPI(root=f'/tmp/{dataset_name}')
+        # Pobranie pierwszego elementu ze zbioru danych (w PPI, dataset zawiera jedną instancję grafu)
+        data = dataset[0]
+
+        # Konwersja formatu danych do wybranego formatu macierzy, zgodnie z formatami obsługiwanymi przez PyG
+        data = convert_pyg_format(data, matrix_format)
+        # Zwracamy przetworzony graf, nazwę zbioru danych i cały obiekt dataset dla dalszego użytku
+        return data, dataset_name, dataset
+
+    # Sprawdzenie, czy wybrana biblioteka to DGL (Deep Graph Library)
+    elif library == "DGL":
+        # Ładowanie danych PPI do zmiennej dataset, zapisanie ich w lokalnym katalogu tymczasowym '/tmp/{dataset_name}'
+        dataset = PPI(root=f'/tmp/{dataset_name}')
+        # Pobranie pierwszego elementu ze zbioru danych (w PPI, dataset zawiera jedną instancję grafu)
+        data = dataset[0]
+
+        # Tworzenie grafu DGL na podstawie krawędzi wczytanych z datasetu (edge_index przechowuje pary połączonych węzłów)
+        graph = dgl.graph((data.edge_index[0], data.edge_index[1]), num_nodes=data.num_nodes)
+        # Przypisanie macierzy cech (features) do węzłów w grafie DGL, korzystając z pola 'x' w danych PyG
+        graph.ndata['feat'] = data.x
+        # Przypisanie etykiet (labels) do węzłów w grafie DGL, korzystając z pola 'y' w danych PyG
+        graph.ndata['label'] = data.y
+
+        # Konwersja formatu grafu na wybrany format macierzy, dostosowany do struktury DGL
+        graph = convert_dgl_format(graph, matrix_format)
+
+        # Wywołanie funkcji tworzącej maski (np. train_mask, val_mask, test_mask) i przypisanie ich do grafu
+        create_dgl_masks(graph)
+
+        # Zwracamy przetworzony graf, nazwę zbioru danych i cały obiekt dataset dla dalszego użytku
+        return graph, dataset_name, dataset
+
+
+# Funkcja do tworzenia masek dla grafu w DGL, które definiują podział na zbiory treningowe, walidacyjne i testowe
+def create_dgl_masks(graph):
+    # Sprawdzamy, czy graf jest heterogeniczny (tzn. posiada różne typy węzłów)
+    if len(graph.ntypes) > 1:  # Jeśli mamy więcej niż jeden typ węzłów
+        # Iteracja po każdym typie węzła w grafie heterogenicznym
+        for node_type in graph.ntypes:
+            # Pobranie liczby węzłów dla aktualnie przetwarzanego typu węzła
+            num_nodes = graph.num_nodes(node_type)
+            # Inicjalizacja maski dla zbioru treningowego z zerowymi wartościami (nie włączamy żadnego węzła)
+            train_mask = torch.zeros(num_nodes, dtype=torch.bool)
+            # Inicjalizacja maski dla zbioru walidacyjnego z zerowymi wartościami
+            val_mask = torch.zeros(num_nodes, dtype=torch.bool)
+            # Inicjalizacja maski dla zbioru testowego z zerowymi wartościami
+            test_mask = torch.zeros(num_nodes, dtype=torch.bool)
+
+            # Ustawienie maski dla zbioru treningowego na 60% pierwszych węzłów
+            train_mask[:int(0.6 * num_nodes)] = True
+            # Ustawienie maski dla zbioru walidacyjnego na kolejnych 20% węzłów
+            val_mask[int(0.6 * num_nodes):int(0.8 * num_nodes)] = True
+            # Ustawienie maski dla zbioru testowego na ostatnie 20% węzłów
+            test_mask[int(0.8 * num_nodes):] = True
+
+            # Przypisanie masek do aktualnego typu węzła w grafie DGL
+            graph.nodes[node_type].data['train_mask'] = train_mask
+            graph.nodes[node_type].data['val_mask'] = val_mask
+            graph.nodes[node_type].data['test_mask'] = test_mask
+    else:  # Dla grafu jednorodnego (z jednym typem węzłów)
+        # Pobranie liczby węzłów dla grafu jednorodnego
+        num_nodes = graph.num_nodes()
+        # Inicjalizacja maski dla zbioru treningowego z zerowymi wartościami
+        train_mask = torch.zeros(num_nodes, dtype=torch.bool)
+        # Inicjalizacja maski dla zbioru walidacyjnego z zerowymi wartościami
+        val_mask = torch.zeros(num_nodes, dtype=torch.bool)
+        # Inicjalizacja maski dla zbioru testowego z zerowymi wartościami
+        test_mask = torch.zeros(num_nodes, dtype=torch.bool)
+
+        # Ustawienie maski dla zbioru treningowego na 60% pierwszych węzłów
+        train_mask[:int(0.6 * num_nodes)] = True
+        # Ustawienie maski dla zbioru walidacyjnego na kolejnych 20% węzłów
+        val_mask[int(0.6 * num_nodes):int(0.8 * num_nodes)] = True
+        # Ustawienie maski dla zbioru testowego na ostatnie 20% węzłów
+        test_mask[int(0.8 * num_nodes):] = True
+
+        # Przypisanie masek (train_mask, val_mask, test_mask) do wszystkich węzłów grafu jednorodnego
+        graph.ndata['train_mask'] = train_mask
+        graph.ndata['val_mask'] = val_mask
+        graph.ndata['test_mask'] = test_mask
